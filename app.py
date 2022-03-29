@@ -1,6 +1,7 @@
 import time
 
 import dash
+from dash import dash_table
 import pandas as pd
 import plotly.graph_objects as go
 from dash.dependencies import Input, Output, State
@@ -266,7 +267,7 @@ app.layout = html.Div([
         options=[
             'STK', 'OPT', 'FUT', 'CASH'
         ],
-        id='sec_type',
+        id='sec-type',
         value='STK',
         style={
             'width': '150px',
@@ -277,7 +278,7 @@ app.layout = html.Div([
     ),
 
     html.H4("Write down the contract symbol of the asset you want to trade:"),
-    dcc.Input(id='contract_symbol', value='AUD.CAD', type='text'),
+    dcc.Input(id='contract-symbol', value='AUD.CAD', type='text'),
 
     html.H4("Write down the currency type of the asset you want to trade:"),
     dcc.Input(id='currency', value='USD', type='text'),
@@ -286,11 +287,11 @@ app.layout = html.Div([
     dcc.Input(id='exchange', value='SMART', type='text'),
 
     html.H4("Write down the primary exchange type of the asset you want to trade:"),
-    dcc.Input(id='primary_exchange', value='ARCA', type='text'),
+    dcc.Input(id='primary-exchange', value='ARCA', type='text'),
 
     html.H4("Choose the which type you want to trade the asset, Market or Limit price:"),
     dcc.RadioItems(
-        id='limit_or_market',
+        id='limit-or-market',
         options=[
             {'label': 'MKT', 'value': 'MKT'},
             {'label': 'LMT', 'value': 'LMT'}
@@ -310,10 +311,10 @@ app.layout = html.Div([
     ),
 
     html.H4("Write down the amount of asset you want to trade:"),
-    dcc.Input(id='trade_amount', value='0', type='number'),
+    dcc.Input(id='trade-amount', value='0', type='number'),
 
     html.H4("Write down the limit price for the asset you want to trade:"),
-    dcc.Input(id='limit_price', value='0', type='number'),
+    dcc.Input(id='limit-price', value='0', type='number'),
 
     # Submit button for the trade
     html.Button('Trade', id='trade-button', n_clicks=0)
@@ -459,11 +460,11 @@ def update_candlestick_graph(n_clicks, currency_string, what_to_show,
     # We DON'T want to run this function whenever buy-or-sell, Contract_Symbol,
     #   or trade-amt is updated, so we pass those in as States, not Inputs:
     [State("host", "value"), State("port", "value"),
-     State("clientid", "value"), State('sec_type', 'value'),
-     State('contract_symbol', 'value'), State('currency', 'value'),
-     State('trade_amount', 'value'), State('exchange', 'value'),
-     State('primary_exchange', 'value'), State('limit_or_market', 'value'),
-     State('action', 'value'), State('limit_price', 'value')],
+     State("clientid", "value"), State('sec-type', 'value'),
+     State('contract-symbol', 'value'), State('currency', 'value'),
+     State('trade-amount', 'value'), State('exchange', 'value'),
+     State('primary-exchange', 'value'), State('limit-or-market', 'value'),
+     State('action', 'value'), State('limit-price', 'value')],
     # DON'T start executing trades just because n_clicks was initialized to 0!!!
     prevent_initial_call=True
 )
@@ -501,30 +502,35 @@ def trade(n_clicks, host, port, clientid, sec_type, contract_symbol,
 
     order_detail = place_order(order_contract, order)
 
-    df_file = pd.read_csv("/Users/gu/Desktop/submitted_orders.csv")
-    order_account = order.account
-    # find order detail
-    order_ID = order_detail['orderId'][0]
+    file = pd.read_csv("/Users/gu/Desktop/submitted_orders.csv")
 
-    perm = order_detail['perm_id'][0]
-    c = clientid
-    con_id = fetch_contract_details(order_contract, hostname=host, port=port, client_id=clientid)['con_id'][0]
-    current_time = fetch_current_time()
-    smbol = order_contract.symbol
-    action_buy_sell = order.action
+    time = fetch_current_time()
+    order_ID = order_detail['order_id'][0]
+    client_id = clientid
+    perm_id = order_detail['perm_id'][0]
+    con_id = contract_details['con_id'][0]
+    symbol = order_contract.symbol
     size = order.totalQuantity
     order_type = order.orderType
     lmt_price = order.lmtPrice
 
-    df_file = df_file.append({'timestamp': current_time, 'order_id': order_ID, 'client_id': c, 'perm_id': perm,
-                              'con_id': con_id, 'symbol': smbol, 'action': action_buy_sell,
-                              'size': size, 'order_type': order_type, 'lmt_price': lmt_price}, ignore_index=True)
+    file = pd.concat(
+        [file, pd.DataFrame({
+            "timestamp": [time],
+            "order_id": [order_ID],
+            "client_id": [client_id],
+            "perm_id": [perm_id],
+            "con_id": [con_id],
+            "symbol": [symbol],
+            "action": [action],
+            "size": [size],
+            "order_type": [order_type],
+            "lmt_price": [lmt_price]
+        })])
 
-    df_file.to_csv("/Users/gu/Desktop/submitted_orders.csv", index=False)
+    file.to_csv("/Users/gu/Desktop/submitted_orders.csv")
 
-
-
-
+    dash_table.DataTable(file.to_dict('records'))
 
     return msg
 
