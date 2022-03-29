@@ -1,7 +1,7 @@
 import time
 
 import dash
-from dash import dash_table
+from dash import Dash, dash_table
 import pandas as pd
 import plotly.graph_objects as go
 from dash.dependencies import Input, Output, State
@@ -15,6 +15,8 @@ from datetime import date
 
 # Make a Dash app!
 app = dash.Dash(__name__)
+
+df = pd.read_csv("/Users/gu/Desktop/submitted_orders.csv")
 
 # Define the layout.
 app.layout = html.Div([
@@ -254,7 +256,6 @@ app.layout = html.Div([
         children=html.Div([dcc.Graph(id='candlestick-graph')])
     ),
 
-
     # Another line break
     html.Br(),
     # Section title
@@ -317,8 +318,9 @@ app.layout = html.Div([
     dcc.Input(id='limit-price', value='0', type='number'),
 
     # Submit button for the trade
-    html.Button('Trade', id='trade-button', n_clicks=0)
+    html.Button('Trade', id='trade-button', n_clicks=0),
 
+    dash_table.DataTable(df.to_dict('records'), [{"name": i, "id": i} for i in df.columns], id='table')
 ])
 
 @app.callback(
@@ -455,6 +457,7 @@ def update_candlestick_graph(n_clicks, currency_string, what_to_show,
 @app.callback(
     # We're going to output the result to trade-output
     Output(component_id='trade-output', component_property='children'),
+    Output(component_id='table', component_property='data'),
     # Only run this callback function when the trade-button is pressed
     Input('trade-button', 'n_clicks'),
     # We DON'T want to run this function whenever buy-or-sell, Contract_Symbol,
@@ -530,9 +533,7 @@ def trade(n_clicks, host, port, clientid, sec_type, contract_symbol,
 
     file.to_csv("/Users/gu/Desktop/submitted_orders.csv")
 
-    dash_table.DataTable(file.to_dict('records'))
-
-    return msg
+    return msg, file.to_dict('records')
 
 # Run it!
 if __name__ == '__main__':
