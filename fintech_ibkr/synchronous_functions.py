@@ -52,6 +52,7 @@ def fetch_current_time(hostname=default_hostname,
                 "couldn't connect to IBKR"
             )
 
+
     def run_loop():
         app.run()
 

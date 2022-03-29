@@ -1,6 +1,7 @@
 import time
 
 import dash
+import pandas as pd
 import plotly.graph_objects as go
 from dash.dependencies import Input, Output, State
 from ibapi.contract import Contract
@@ -251,25 +252,69 @@ app.layout = html.Div([
         type="default",
         children=html.Div([dcc.Graph(id='candlestick-graph')])
     ),
+
+
     # Another line break
     html.Br(),
     # Section title
-    html.H6("Make a Trade"),
     # Div to confirm what trade was made
     html.Div(id='trade-output'),
+
+    # get the input from customer to trade
+    html.H4("Choose the asset type you want to trade:"),
+    dcc.Dropdown(
+        options=[
+            'STK', 'OPT', 'FUT', 'CASH'
+        ],
+        id='sec_type',
+        value='STK',
+        style={
+            'width': '150px',
+            'display': 'inline-block',
+            'vertical-align': 'middle',
+            'padding-left': '15px'
+        }
+    ),
+
+    html.H4("Write down the contract symbol of the asset you want to trade:"),
+    dcc.Input(id='contract_symbol', value='AUD.CAD', type='text'),
+
+    html.H4("Write down the currency type of the asset you want to trade:"),
+    dcc.Input(id='currency', value='USD', type='text'),
+
+    html.H4("Write down the exchange type of the asset you want to trade:"),
+    dcc.Input(id='exchange', value='SMART', type='text'),
+
+    html.H4("Write down the primary exchange type of the asset you want to trade:"),
+    dcc.Input(id='primary_exchange', value='ARCA', type='text'),
+
+    html.H4("Choose the which type you want to trade the asset, Market or Limit price:"),
+    dcc.RadioItems(
+        id='limit_or_market',
+        options=[
+            {'label': 'MKT', 'value': 'MKT'},
+            {'label': 'LMT', 'value': 'LMT'}
+        ],
+        value='MKT'
+    ),
+
+    html.H4("Choose whether you want to buy or seel the asset: "),
     # Radio items to select buy or sell
     dcc.RadioItems(
-        id='buy-or-sell',
+        id='action',
         options=[
             {'label': 'BUY', 'value': 'BUY'},
             {'label': 'SELL', 'value': 'SELL'}
         ],
         value='BUY'
     ),
-    # Text input for the currency pair to be traded
-    dcc.Input(id='trade-currency', value='AUDCAD', type='text'),
-    # Numeric input for the trade amount
-    dcc.Input(id='trade-amt', value='20000', type='number'),
+
+    html.H4("Write down the amount of asset you want to trade:"),
+    dcc.Input(id='trade_amount', value='0', type='number'),
+
+    html.H4("Write down the limit price for the asset you want to trade:"),
+    dcc.Input(id='limit_price', value='0', type='number'),
+
     # Submit button for the trade
     html.Button('Trade', id='trade-button', n_clicks=0)
 
@@ -340,7 +385,7 @@ def update_candlestick_graph(n_clicks, currency_string, what_to_show,
     except:
         return ("No contract found for " + currency_string), go.Figure()
 
-    contract_symbol_ibkr = str(contract_details).split(",")[10]
+    contract_symbol_ibkr = contract_details.symbol[0]+'.'+contract_details.currency[0]
 
     # If the contract name doesn't equal the one you want:
     if not contract_symbol_ibkr == currency_string:
@@ -411,26 +456,76 @@ def update_candlestick_graph(n_clicks, currency_string, what_to_show,
     Output(component_id='trade-output', component_property='children'),
     # Only run this callback function when the trade-button is pressed
     Input('trade-button', 'n_clicks'),
-    # We DON'T want to run this function whenever buy-or-sell, trade-currency,
+    # We DON'T want to run this function whenever buy-or-sell, Contract_Symbol,
     #   or trade-amt is updated, so we pass those in as States, not Inputs:
-    [State('buy-or-sell', 'value'), State('trade-currency', 'value'),
-     State('trade-amt', 'value'), State("host", "value"),
-     State("port", "value"), State("clientid", "value")],
+    [State("host", "value"), State("port", "value"),
+     State("clientid", "value"), State('sec_type', 'value'),
+     State('contract_symbol', 'value'), State('currency', 'value'),
+     State('trade_amount', 'value'), State('exchange', 'value'),
+     State('primary_exchange', 'value'), State('limit_or_market', 'value'),
+     State('action', 'value'), State('limit_price', 'value')],
     # DON'T start executing trades just because n_clicks was initialized to 0!!!
     prevent_initial_call=True
 )
-def trade(n_clicks, action, trade_currency, trade_amt, host, port, clientid):
+def trade(n_clicks, host, port, clientid, sec_type, contract_symbol,
+          currency, trade_amount, exchange, primary_exchange,
+          limit_or_market, action, limit_price):
     # Still don't use n_clicks, but we need the dependency
 
     # Make the message that we want to send back to trade-output
-    msg = action + ' ' + trade_amt + ' ' + trade_currency
+    msg = action + ' ' + str(trade_amount) + ' ' + contract_symbol
+
+    order_contract = Contract()
+    order_contract.secType = sec_type
+    order_contract.symbol = contract_symbol
+    order_contract.currency = currency
+    order_contract.primaryExchange = primary_exchange
+    order_contract.exchange = exchange
+
+    try:
+        contract_details = fetch_contract_details(order_contract, hostname=host,
+                                                  port=port, client_id=clientid)
+    except:
+        return ("No contract found for " + contract_symbol)
 
     order = Order()
-    order.action = action
-    order.orderType = "MKT"
-    order.totalQuantity = trade_amt
+    if limit_or_market == 'MKT':
+        order.action = action
+        order.orderType = limit_or_market
+        order.totalQuantity = trade_amount
+    elif limit_or_market == 'LMT':
+        order.action = action
+        order.orderType = limit_or_market
+        order.totalQuantity = trade_amount
+        order.lmtPrice = limit_price
 
-    # Return the message, which goes to the trade-output div's children
+    order_detail = place_order(order_contract, order)
+
+    df_file = pd.read_csv("/Users/gu/Desktop/submitted_orders.csv")
+    order_account = order.account
+    # find order detail
+    order_ID = order_detail['orderId'][0]
+
+    perm = order_detail['perm_id'][0]
+    c = clientid
+    con_id = fetch_contract_details(order_contract, hostname=host, port=port, client_id=clientid)['con_id'][0]
+    current_time = fetch_current_time()
+    smbol = order_contract.symbol
+    action_buy_sell = order.action
+    size = order.totalQuantity
+    order_type = order.orderType
+    lmt_price = order.lmtPrice
+
+    df_file = df_file.append({'timestamp': current_time, 'order_id': order_ID, 'client_id': c, 'perm_id': perm,
+                              'con_id': con_id, 'symbol': smbol, 'action': action_buy_sell,
+                              'size': size, 'order_type': order_type, 'lmt_price': lmt_price}, ignore_index=True)
+
+    df_file.to_csv("/Users/gu/Desktop/submitted_orders.csv", index=False)
+
+
+
+
+
     return msg
 
 # Run it!
